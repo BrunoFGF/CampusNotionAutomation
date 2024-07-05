@@ -20,16 +20,18 @@ public class CampusScraper {
     private String password = Config.getProperty("campus.password");
     private String loginUrl = Config.getProperty("campus.login.url");
     private String dashboardUrl = Config.getProperty("campus.dashboard.url");
+    private String chromeDriverUrl = Config.getProperty("chrome.driver.url");
 
     public List<Task> scrapeTasks(){
         List<Task> tasks = new ArrayList<>();
 
-        System.setProperty("webdriver.chrome", "C:\\Users\\Bruno\\Desktop\\Chrome Driver\\chrome.exe");
+        System.setProperty("webdriver.chrome", chromeDriverUrl);
 
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--headless");
         options.addArguments("--disable-gpu");
         options.addArguments("--disable-dev-shm-usage");
+
 
         driver = new ChromeDriver(options);
 
@@ -39,7 +41,7 @@ public class CampusScraper {
             driver.findElement(By.id("password")).sendKeys(password);
             driver.findElement(By.id("loginbtn")).click();
 
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5));
 
             driver.get(dashboardUrl);
 
@@ -50,33 +52,57 @@ public class CampusScraper {
             DateTimeFormatter inputFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy, h:mm a", Locale.ENGLISH);
 
             for (WebElement element : taskElements) {
-                WebElement taskLink = element.findElement(By.cssSelector("div.event-name-container a"));
-                String taskUrl = taskLink.getAttribute("href");
+                try {
+                    WebElement taskLink = element.findElement(By.cssSelector("div.event-name-container a"));
+                    String taskUrl = taskLink.getAttribute("href");
 
-                ((JavascriptExecutor) driver).executeScript("window.open(arguments[0])", taskUrl);
-                ArrayList<String> tabs = new ArrayList<>(driver.getWindowHandles());
-                driver.switchTo().window(tabs.get(1));
+                    ((JavascriptExecutor) driver).executeScript("window.open(arguments[0])", taskUrl);
+                    ArrayList<String> tabs = new ArrayList<>(driver.getWindowHandles());
+                    driver.switchTo().window(tabs.get(1));
 
-                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("div.page-header-headings h1.h2")));
+                    wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("div.page-header-headings h1.h2")));
 
-                String taskName;
-//                try {
-                    WebElement firstTaskNameElement = driver.findElement(By.cssSelector("div.page-header-headings h1.h2"));
-                    taskName = firstTaskNameElement.getText();
-//                } catch (NoSuchElementException e) {
-//                    WebElement alternativeTaskNameElement = driver.findElement(By.cssSelector("div[region-main='course-content-header h2'"));
-//                    taskName = alternativeTaskNameElement.getText();
-//                }
+                    String taskName;
+                    try {
+                        WebElement firstTaskNameElement = driver.findElement(By.cssSelector("div.page-header-headings h1.h2"));
+                        taskName = firstTaskNameElement.getText();
+                    } catch (Exception e) {
+                        driver.close();
+                        driver.switchTo().window(tabs.get(0));
+                        continue;
+                    }
 
-                WebElement dueDateElement = driver.findElement(By.xpath("//div[@data-region='activity-information']//div[@data-region='activity-dates']//div[strong[text()='Due:']]"));
-                String dueDateText = dueDateElement.getText().replace("Due:", "").trim().replaceAll("\\s+", " ").trim();
-                LocalDateTime taskDueDate = LocalDateTime.parse(dueDateText, inputFormatter);
-                String taskSubject = driver.findElement(By.id("course-header-banner-text")).getText();
+                    String dueDateText;
+                    try {
+                        WebElement dueDateElement = driver.findElement(By.xpath("//div[@data-region='activity-information']//div[@data-region='activity-dates']//div[strong[text()='Due:']]"));
+                        dueDateText = dueDateElement.getText().replace("Due:", "").trim().replaceAll("\\s+", " ").trim();
+                    } catch (Exception e) {
+                        driver.close();
+                        driver.switchTo().window(tabs.get(0));
+                        continue;
+                    }
 
-                tasks.add(new Task(taskName, taskDueDate, taskSubject, taskUrl));
+                    LocalDateTime taskDueDate = LocalDateTime.parse(dueDateText, inputFormatter);
 
-                driver.close();
-                driver.switchTo().window(tabs.getFirst());
+                    String taskSubject;
+                    try {
+                        taskSubject = driver.findElement(By.id("course-header-banner-text")).getText();
+                    } catch (Exception e) {
+                        driver.close();
+                        driver.switchTo().window(tabs.get(0));
+                        continue;
+                    }
+
+                    tasks.add(new Task(taskName, taskDueDate, taskSubject, taskUrl));
+
+                    driver.close();
+                    driver.switchTo().window(tabs.get(0));
+                } catch (Exception e) {
+                    ArrayList<String> tabs = new ArrayList<>(driver.getWindowHandles());
+                    driver.switchTo().window(tabs.get(1));
+                    driver.close();
+                    driver.switchTo().window(tabs.get(0));
+                }
             }
         } finally {
             driver.quit();
