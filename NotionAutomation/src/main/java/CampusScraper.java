@@ -32,7 +32,6 @@ public class CampusScraper {
         options.addArguments("--disable-gpu");
         options.addArguments("--disable-dev-shm-usage");
 
-
         driver = new ChromeDriver(options);
 
         try {
